@@ -40,9 +40,20 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <parameter_utils/slamBase.h>
 
+#include <cstdlib>
+
 ParameterReader::ParameterReader(string filename)
 {
 	std::ifstream fin(filename.c_str());
+	if (!fin && filename == "../data/parameters.txt")
+	{
+		const char* data_dir = std::getenv("LIVOX_CALIB_DATA_DIR");
+		if (data_dir != nullptr)
+		{
+			std::string fallback_file = std::string(data_dir) + "/parameters.txt";
+			fin.open(fallback_file.c_str());
+		}
+	}
 	if (!fin)
 	{
 		return;
@@ -51,9 +62,13 @@ ParameterReader::ParameterReader(string filename)
 	{
 		string str;
 		getline(fin, str);
+		if (str.empty())
+		{
+			continue;
+		}
 		if (str[0] == '#')
 		{
-			// ÒÔ¡®££¡¯¿ªÍ·µÄÊÇ×¢ÊÍ
+			// ï¿½Ô¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í·ï¿½ï¿½ï¿½ï¿½×¢ï¿½ï¿½
 			continue;
 		}
 

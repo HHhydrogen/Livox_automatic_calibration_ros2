@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>livox_automatic_calibration_ros2</name>
+  <version>0.1.0</version>
+  <description>Livox automatic extrinsic calibration tools packaged for ROS2 (ament_cmake).</description>
+  <maintainer email="huhao@example.com">huhao</maintainer>
+  <license>UNKNOWN</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>ament_index_cpp</depend>
+
+  <build_depend>eigen</build_depend>
+  <exec_depend>eigen</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

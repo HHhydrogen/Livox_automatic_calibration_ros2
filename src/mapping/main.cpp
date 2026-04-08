@@ -55,6 +55,10 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <cstdlib>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 using namespace std;
 
 #define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
@@ -74,8 +78,6 @@ namespace gu = geometry_utils;
 typedef pcl::POINT_TYPE PointT;
 typedef pcl::PointCloud<PointT> PointCloud;
 
-char framesDir[100] = "../data/Base_LiDAR_Frames";
-
 using namespace pcl::visualization;
 BlamSlam LivoxSLAM;
 
@@ -88,21 +90,66 @@ std::string itos(int i)
     return s.str();
 }
 
-
-
-int main(void)
+int countFrames(const std::string& frames_dir, int first_frame)
 {
+    int count = 0;
+    while (true)
+    {
+        const std::string frame_path = frames_dir + "/" + itos(first_frame + count) + ".pcd";
+        if (access(frame_path.c_str(), F_OK) != 0)
+        {
+            break;
+        }
+        ++count;
+    }
+    return count;
+}
+
+
+
+int main(int argc, char** argv)
+{
+    std::string data_root;
+    if (argc > 1)
+    {
+        data_root = argv[1];
+    }
+    else
+    {
+        try
+        {
+            data_root = ament_index_cpp::get_package_share_directory("livox_automatic_calibration_ros2") + "/data";
+        }
+        catch (const std::exception&)
+        {
+            data_root = "../data";
+        }
+    }
+
+    const std::string frames_dir = data_root + "/Base_LiDAR_Frames";
+    const std::string t_matrix_path = data_root + "/T_Matrix.txt";
+    const std::string map_output_dir = data_root + "/H-LiDAR-Map-data";
+    const std::string map_output_path = map_output_dir + "/H_LiDAR_Map.pcd";
+    setenv("LIVOX_CALIB_DATA_DIR", data_root.c_str(), 1);
   
     //================== Step.1 Reading L-LiDAR frames =====================//
-    struct dirent **namelist;
-    int framenumbers = scandir(framesDir, &namelist, 0, alphasort) - 2;
+    int framenumbers = countFrames(frames_dir, 100000);
+    if (framenumbers <= 0)
+    {
+        std::cerr << "No numbered PCD frames found in " << frames_dir << " (expect 100000.pcd...)" << std::endl;
+        return -1;
+    }
     int frame_count = 100000;
     int cframe_count = 0;
     cout << "Start building local map..." << endl;
     cout << "Loaded " << framenumbers << " frames from Base-LiDAR" << endl;
 
-    char filename[] = "../data/T_Matrix.txt";
-    ofstream fout(filename);
+    ofstream fout(t_matrix_path.c_str());
+    if (!fout.is_open())
+    {
+        std::cerr << "Cannot open " << t_matrix_path << " for writing" << std::endl;
+        return -1;
+    }
 
     pcl::visualization::CloudViewer viewer("Cloud Viewer");
     
@@ -116,7 +163,7 @@ int main(void)
         
         {
             pcl::PointCloud<pcl::PointXYZ>::Ptr frames(new pcl::PointCloud<pcl::PointXYZ>);
-            if (pcl::io::loadPCDFile<pcl::PointXYZ>(string(framesDir) + "/" + itos(frame_count) + ".pcd", *frames) == -1)
+            if (pcl::io::loadPCDFile<pcl::PointXYZ>(frames_dir + "/" + itos(frame_count) + ".pcd", *frames) == -1)
             {
                 PCL_ERROR("Couldn't read H_LiDAR_Map \n");
                 return (-1);
@@ -145,8 +192,9 @@ int main(void)
         }
 
         std::cout << "\nSaving submap..." << std::endl;
+        mkdir(map_output_dir.c_str(), 0755);
         pcl::PCDWriter writer;
-        writer.write("../data/H-LiDAR-Map-data/H_LiDAR_Map.pcd", *LivoxSLAM.mapper_.map_data_);
+        writer.write(map_output_path, *LivoxSLAM.mapper_.map_data_);
         std::cout << "Mapping done！" << std::endl;
         fout.close();
         break;

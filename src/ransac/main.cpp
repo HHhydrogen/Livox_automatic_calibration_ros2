@@ -7,6 +7,8 @@
 #include <fstream>
 #include <string>
 #include <iostream>
+#include <vector>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 using namespace std;
 
@@ -14,40 +16,72 @@ using namespace std;
 #include <Eigen/Geometry>
 #define PI (3.1415926535897932346f)
 
-int main()
+int main(int argc, char** argv)
 {
+        std::string data_root;
+        if (argc > 1)
+        {
+                data_root = argv[1];
+        }
+        else
+        {
+                try
+                {
+                        data_root = ament_index_cpp::get_package_share_directory("livox_automatic_calibration_ros2") + "/data";
+                }
+                catch (const std::exception&)
+                {
+                        data_root = "../data";
+                }
+        }
+
+        const std::string calib_data_path = data_root + "/calib_data.txt";
 
         //========Read calibration data========//
 
-        double id, score, x, y, z, roll, yaw, pitch;
-        double  x_0, y_0, z_0, roll_0, yaw_0, pitch_0;
+        double id, score, x = 0.0, y = 0.0, z = 0.0, roll = 0.0, yaw = 0.0, pitch = 0.0;
+        double x_0 = 0.0, y_0 = 0.0, z_0 = 0.0, roll_0 = 0.0, yaw_0 = 0.0, pitch_0 = 0.0;
 
-        ifstream calib_FileA("../data/calib_data.txt");
-        int filecount = 0;
-        while (!calib_FileA.eof())
+        ifstream calib_FileA(calib_data_path.c_str());
+        if (!calib_FileA.is_open())
         {
-                calib_FileA >> id >> score >> x >> y >> z >> roll >> pitch >> yaw;
+                cerr << "Cannot open " << calib_data_path << endl;
+                return -1;
+        }
+
+        int filecount = 0;
+        while (calib_FileA >> id >> score >> x >> y >> z >> roll >> pitch >> yaw)
+        {
                 filecount++;
         }
         calib_FileA.close();
 
+        if (filecount <= 0)
+        {
+                cerr << "No valid calibration records in " << calib_data_path << endl;
+                return -1;
+        }
+
         cout << "Read " << filecount << " data" << endl;
 
-        ifstream calib_File("../data/calib_data.txt");
+        ifstream calib_File(calib_data_path.c_str());
+        if (!calib_File.is_open())
+        {
+                cerr << "Cannot reopen " << calib_data_path << endl;
+                return -1;
+        }
         int count = 0;
 
-        Point2D32f points_x[filecount];
-        Point2D32f points_y[filecount];
-        Point2D32f points_z[filecount];
+        std::vector<Point2D32f> points_x(filecount);
+        std::vector<Point2D32f> points_y(filecount);
+        std::vector<Point2D32f> points_z(filecount);
 
-        Point2D32f points_roll[filecount];
-        Point2D32f points_pitch[filecount];
-        Point2D32f points_yaw[filecount];
+        std::vector<Point2D32f> points_roll(filecount);
+        std::vector<Point2D32f> points_pitch(filecount);
+        std::vector<Point2D32f> points_yaw(filecount);
 
-        while (!calib_File.eof())
+        while ((calib_File >> id >> score >> x >> y >> z >> roll >> pitch >> yaw) && count < filecount)
         {
-                calib_File >> id >> score >> x >> y >> z >> roll >> pitch >> yaw;
-
                 points_x[count].x = id;
                 points_x[count].y = x;
 
@@ -75,12 +109,20 @@ int main()
                 
                 count++;
         }
-        x_0=x_0/filecount;
-        y_0=y_0/filecount;
-        z_0=z_0/filecount;
-        roll_0=roll_0/filecount;
-        pitch_0=pitch_0/filecount;
-        yaw_0=yaw_0/filecount;
+        x_0=x_0/count;
+        y_0=y_0/count;
+        z_0=z_0/count;
+        roll_0=roll_0/count;
+        pitch_0=pitch_0/count;
+        yaw_0=yaw_0/count;
+
+        // 当前版本 RANSAC 拟合逻辑被注释，输出均值作为最终参数。
+        x = x_0;
+        y = y_0;
+        z = z_0;
+        roll = roll_0;
+        pitch = pitch_0;
+        yaw = yaw_0;
 
      /*   float lines[4] = {0.0}; //line parameters
 

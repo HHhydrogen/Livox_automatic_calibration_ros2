@@ -61,6 +61,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <geometry_utils/Transform3.h>
 #include <point_cloud_mapper/PointCloudMapper.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 using namespace std;
 namespace gu = geometry_utils;
@@ -79,8 +80,6 @@ void printProgress(double percentage)
     fflush(stdout);
 }
 
-char framesDir[100] = "../data/Target-LiDAR-Frames";
-
 std::string itos(int i)
 {
     std::stringstream s;
@@ -88,15 +87,54 @@ std::string itos(int i)
     return s.str();
 }
 
-int main()
+int countFrames(const std::string& frames_dir, int first_frame)
+{
+    int count = 0;
+    while (true)
+    {
+        const std::string frame_path = frames_dir + "/" + itos(first_frame + count) + ".pcd";
+        if (access(frame_path.c_str(), F_OK) != 0)
+        {
+            break;
+        }
+        ++count;
+    }
+    return count;
+}
+
+int main(int argc, char** argv)
 {
     std::cout << "Start calibration..." << std::endl;
+
+    std::string data_root;
+    if (argc > 1)
+    {
+        data_root = argv[1];
+    }
+    else
+    {
+        try
+        {
+            data_root = ament_index_cpp::get_package_share_directory("livox_automatic_calibration_ros2") + "/data";
+        }
+        catch (const std::exception&)
+        {
+            data_root = "../data";
+        }
+    }
+
+    const std::string frames_dir = data_root + "/Target_LiDAR_Frames";
+    const std::string map_path = data_root + "/H-LiDAR-Map-data/H_LiDAR_Map.pcd";
+    const std::string t_matrix_path = data_root + "/T_Matrix.txt";
+    const std::string init_matrix_path = data_root + "/Init_Matrix.txt";
+    const std::string calib_output_path = data_root + "/calib_data.txt";
+    setenv("LIVOX_CALIB_DATA_DIR", data_root.c_str(), 1);
 
     //================== Step.1 Reading H-LiDAR map data =====================//
 
     std::cout << "Reading H-LiDAR map data..." << std::endl;
     pcl::PointCloud<pcl::PointXYZ>::Ptr H_LiDAR_Map(new pcl::PointCloud<pcl::PointXYZ>);
-    if (pcl::io::loadPCDFile<pcl::PointXYZ>("../data/H-LiDAR-Map-data/H_LiDAR_Map.pcd", *H_LiDAR_Map) == -1)
+    if (pcl::io::loadPCDFile<pcl::PointXYZ>(map_path, *H_LiDAR_Map) == -1)
     {
         PCL_ERROR("Couldn't read H_LiDAR_Map \n");
         return (-1);
@@ -111,10 +149,20 @@ int main()
 
     //================== Step.2 Reading H-LiDAR's Trajectory and init guess=====================//
 
-    ifstream T_Mat_File("../data/T_Matrix.txt");
+    ifstream T_Mat_File(t_matrix_path.c_str());
     Eigen::Matrix4f T_Matrix = Eigen::Matrix4f::Identity();
 
-    ifstream initFile("../data/Init_Matrix.txt");
+    ifstream initFile(init_matrix_path.c_str());
+    if (!T_Mat_File.is_open())
+    {
+        std::cerr << "Cannot open " << t_matrix_path << std::endl;
+        return -1;
+    }
+    if (!initFile.is_open())
+    {
+        std::cerr << "Cannot open " << init_matrix_path << std::endl;
+        return -1;
+    }
 
     Eigen::Matrix4f init_guess = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f init_guess_0 = Eigen::Matrix4f::Identity();
@@ -130,8 +178,12 @@ int main()
     init_guess_0 = init_guess;
     //================== Step.3 Reading L-LiDAR frames =====================//
 
-    struct dirent **namelist;
-    int framenumbers = scandir(framesDir, &namelist, 0, alphasort) - 2;
+    int framenumbers = countFrames(frames_dir, 100000);
+    if (framenumbers <= 0)
+    {
+        std::cerr << "No numbered PCD frames found in " << frames_dir << " (expect 100000.pcd...)" << std::endl;
+        return -1;
+    }
     int frame_count = 100000;
     int cframe_count = 0;
     cout << "Loaded " << framenumbers << " frames from Target-LiDAR" << endl;
@@ -161,8 +213,12 @@ int main()
     //=================================
     // prepare save matrix
 
-    char filename[] = "../data/calib_data.txt";
-    ofstream fout(filename);
+    ofstream fout(calib_output_path.c_str());
+    if (!fout.is_open())
+    {
+        std::cerr << "Cannot open " << calib_output_path << " for writing" << std::endl;
+        return -1;
+    }
     fout.setf(ios::fixed, ios::floatfield);
     fout.precision(7);
 
@@ -172,7 +228,7 @@ int main()
     while (!viewer_final->wasStopped())
     {
         pcl::PointCloud<pcl::PointXYZ>::Ptr frames(new pcl::PointCloud<pcl::PointXYZ>);
-        if (pcl::io::loadPCDFile<pcl::PointXYZ>(string(framesDir) + "/" + itos(frame_count) + ".pcd", *frames) == -1)
+        if (pcl::io::loadPCDFile<pcl::PointXYZ>(frames_dir + "/" + itos(frame_count) + ".pcd", *frames) == -1)
         {
             PCL_ERROR("Couldn't read H_LiDAR_Map \n");
             return (-1);
@@ -184,7 +240,11 @@ int main()
         {
             for (int mat_j = 0; mat_j != 4; mat_j++)
             {
-                T_Mat_File >> T_Matrix(mat_i, mat_j);
+                if (!(T_Mat_File >> T_Matrix(mat_i, mat_j)))
+                {
+                    std::cerr << "T_Matrix.txt data is insufficient for frame " << frame_count << std::endl;
+                    return -1;
+                }
             }
         }
 
