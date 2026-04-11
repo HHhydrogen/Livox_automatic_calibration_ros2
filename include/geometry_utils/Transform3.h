@@ -80,8 +80,8 @@ struct Transform3Base {
 
 template <typename T>
 std::ostream& operator<<(std::ostream& out, const Transform3Base<T>& m) {
-  out << "Translation:" << std::endl << m.translation << std::endl;
-  out << "Rotation:" << std::endl << m.rotation;
+  out << "平移:" << std::endl << m.translation << std::endl;
+  out << "旋转:" << std::endl << m.rotation;
   return out;
 }
 

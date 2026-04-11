@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <dirent.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <memory>
 
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
@@ -104,7 +105,7 @@ int countFrames(const std::string& frames_dir, int first_frame)
 
 int main(int argc, char** argv)
 {
-    std::cout << "Start calibration..." << std::endl;
+    std::cout << "开始标定..." << std::endl;
 
     std::string data_root;
     if (argc > 1)
@@ -130,24 +131,24 @@ int main(int argc, char** argv)
     const std::string calib_output_path = data_root + "/calib_data.txt";
     setenv("LIVOX_CALIB_DATA_DIR", data_root.c_str(), 1);
 
-    //================== Step.1 Reading H-LiDAR map data =====================//
+    //================== 步骤1：读取基准地图 =====================//
 
-    std::cout << "Reading H-LiDAR map data..." << std::endl;
+    std::cout << "正在读取基准地图..." << std::endl;
     pcl::PointCloud<pcl::PointXYZ>::Ptr H_LiDAR_Map(new pcl::PointCloud<pcl::PointXYZ>);
     if (pcl::io::loadPCDFile<pcl::PointXYZ>(map_path, *H_LiDAR_Map) == -1)
     {
-        PCL_ERROR("Couldn't read H_LiDAR_Map \n");
+        PCL_ERROR("读取基准地图失败\n");
         return (-1);
     }
-    std::cout << "Loaded " << H_LiDAR_Map->size() << " data points from H_LiDAR_Map.pcd" << std::endl;
+    std::cout << "已加载基准地图点数：" << H_LiDAR_Map->size() << std::endl;
 
-    //put it into map
+    // 将地图点云写入地图容器
     PointCloudMapper maps;
     maps.Initialize();
     pcl::PointCloud<pcl::PointXYZ>::Ptr unused(new pcl::PointCloud<pcl::PointXYZ>);
     maps.InsertPoints(H_LiDAR_Map, unused.get());
 
-    //================== Step.2 Reading H-LiDAR's Trajectory and init guess=====================//
+    //================== 步骤2：读取基准轨迹与外参初值 =====================//
 
     ifstream T_Mat_File(t_matrix_path.c_str());
     Eigen::Matrix4f T_Matrix = Eigen::Matrix4f::Identity();
@@ -155,12 +156,12 @@ int main(int argc, char** argv)
     ifstream initFile(init_matrix_path.c_str());
     if (!T_Mat_File.is_open())
     {
-        std::cerr << "Cannot open " << t_matrix_path << std::endl;
+        std::cerr << "无法打开轨迹文件：" << t_matrix_path << std::endl;
         return -1;
     }
     if (!initFile.is_open())
     {
-        std::cerr << "Cannot open " << init_matrix_path << std::endl;
+        std::cerr << "无法打开初值矩阵文件：" << init_matrix_path << std::endl;
         return -1;
     }
 
@@ -176,89 +177,102 @@ int main(int argc, char** argv)
     }
 
     init_guess_0 = init_guess;
-    //================== Step.3 Reading L-LiDAR frames =====================//
+    //================== 步骤3：读取目标雷达帧数据 =====================//
 
     int framenumbers = countFrames(frames_dir, 100000);
     if (framenumbers <= 0)
     {
-        std::cerr << "No numbered PCD frames found in " << frames_dir << " (expect 100000.pcd...)" << std::endl;
+        std::cerr << "未找到连续编号的 PCD 帧：" << frames_dir << "（应从 100000.pcd 开始）" << std::endl;
         return -1;
     }
     int frame_count = 100000;
     int cframe_count = 0;
-    cout << "Loaded " << framenumbers << " frames from Target-LiDAR" << endl;
+    cout << "已加载目标雷达帧数：" << framenumbers << endl;
 
     //=================================
-    //prepare ICP
-    pcl::PointCloud<pcl::PointXYZ>::Ptr ICP_output_cloud(new pcl::PointCloud<pcl::PointXYZ>); //not use,but necessary
+    // 配置 ICP
+    pcl::PointCloud<pcl::PointXYZ>::Ptr ICP_output_cloud(new pcl::PointCloud<pcl::PointXYZ>); // 占位输出，接口必需
     pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-    icp.setTransformationEpsilon(0.0000000001); //0.0000000001
+    icp.setTransformationEpsilon(0.0000000001); // 变换收敛阈值
     icp.setMaxCorrespondenceDistance(10);
     icp.setMaximumIterations(35);
     icp.setRANSACIterations(0);
-    icp.setMaximumOptimizerIterations(50); // default 20
+    icp.setMaximumOptimizerIterations(50); // 默认值为 20
 
     //=================================
-    //prepare display
-    boost::shared_ptr<pcl::visualization::PCLVisualizer>
-        viewer_final(new pcl::visualization::PCLVisualizer("3D Viewer"));
-    viewer_final->setBackgroundColor(0, 0, 0);
+    // 配置可视化（默认关闭，避免无图形环境崩溃）
+    const char* viewer_flag = std::getenv("LIVOX_CALIB_ENABLE_VIEWER");
+    const bool enable_viewer = (viewer_flag != nullptr && std::string(viewer_flag) == "1");
+    std::unique_ptr<pcl::visualization::PCLVisualizer> viewer_final;
+    if (enable_viewer)
+    {
+        viewer_final.reset(new pcl::visualization::PCLVisualizer("3D Viewer"));
+        viewer_final->setBackgroundColor(0, 0, 0);
+    }
     pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> map_color(H_LiDAR_Map, 255, 0, 0);
     pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> match_color(H_LiDAR_Map, 0, 255, 0);
 
-    viewer_final->addPointCloud<pcl::PointXYZ>(H_LiDAR_Map, map_color, "target cloud");
-    viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "target cloud");
-    viewer_final->addPointCloud<pcl::PointXYZ>(H_LiDAR_Map, match_color, "match cloud"); //display the match cloud
+    if (enable_viewer)
+    {
+        viewer_final->addPointCloud<pcl::PointXYZ>(H_LiDAR_Map, map_color, "target cloud");
+        viewer_final->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "target cloud");
+        viewer_final->addPointCloud<pcl::PointXYZ>(H_LiDAR_Map, match_color, "match cloud"); // 显示匹配点云
+    }
 
     //=================================
-    // prepare save matrix
+    // 准备保存标定数据
 
     ofstream fout(calib_output_path.c_str());
     if (!fout.is_open())
     {
-        std::cerr << "Cannot open " << calib_output_path << " for writing" << std::endl;
+        std::cerr << "无法写入标定输出文件：" << calib_output_path << std::endl;
         return -1;
     }
     fout.setf(ios::fixed, ios::floatfield);
     fout.precision(7);
 
     //=================================
-    //              START
+    //              开始处理
     //=================================
-    while (!viewer_final->wasStopped())
+    while (true)
     {
+        if (enable_viewer && viewer_final->wasStopped())
+        {
+            break;
+        }
+
         pcl::PointCloud<pcl::PointXYZ>::Ptr frames(new pcl::PointCloud<pcl::PointXYZ>);
         if (pcl::io::loadPCDFile<pcl::PointXYZ>(frames_dir + "/" + itos(frame_count) + ".pcd", *frames) == -1)
         {
-            PCL_ERROR("Couldn't read H_LiDAR_Map \n");
+            PCL_ERROR("读取目标雷达帧失败\n");
             return (-1);
         }
-        //std::cout << "Loaded " << frames->size() << " data points from frames" << std::endl;
+        //std::cout << "当前帧点数：" << frames->size() << std::endl;
 
-        //Load H-LiDAR's Trajectory
+        // 读取基准轨迹矩阵
         for (int mat_i = 0; mat_i != 4; mat_i++)
         {
             for (int mat_j = 0; mat_j != 4; mat_j++)
             {
                 if (!(T_Mat_File >> T_Matrix(mat_i, mat_j)))
                 {
-                    std::cerr << "T_Matrix.txt data is insufficient for frame " << frame_count << std::endl;
+                    std::cerr << "T_Matrix.txt 数据不足，帧号：" << frame_count << std::endl;
                     return -1;
                 }
             }
         }
 
-        //================== Step.4 Start calibration =====================//
+        //================== 步骤4：执行标定 =====================//
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr trans_output_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::PointCloud<pcl::PointXYZ>::Ptr final_output_cloud(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::transformPointCloud(*frames, *trans_output_cloud, init_guess); //Tiny_T * init_guess   ->update this matrix
+        pcl::transformPointCloud(*frames, *trans_output_cloud, init_guess); // Tiny_T * init_guess 用于迭代更新
         pcl::transformPointCloud(*trans_output_cloud, *final_output_cloud, T_Matrix);
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr neighbors_L(new pcl::PointCloud<pcl::PointXYZ>); //201 neighbors points from nap202
+        pcl::PointCloud<pcl::PointXYZ>::Ptr neighbors_L(new pcl::PointCloud<pcl::PointXYZ>); // 邻域匹配点
         maps.ApproxNearestNeighbors(*final_output_cloud, neighbors_L.get());
 
-        //INVERSE T_mat==============================
+        // 轨迹矩阵求逆
         
         gu::Transform3 inverse_mat;
         inverse_mat.translation = gu::Vec3(T_Matrix(0, 3), T_Matrix(1, 3), T_Matrix(2, 3));
@@ -266,7 +280,7 @@ int main(int argc, char** argv)
                                         T_Matrix(1, 0), T_Matrix(1, 1), T_Matrix(1, 2),
                                         T_Matrix(2, 0), T_Matrix(2, 1), T_Matrix(2, 2));
 
-        const gu::Transform3 estimate = gu::PoseInverse(inverse_mat); //integrated_estimate from config parameters
+        const gu::Transform3 estimate = gu::PoseInverse(inverse_mat); // 根据配置参数得到积分位姿
         const Eigen::Matrix<double, 3, 3> T_Matrix_Inverse_R = estimate.rotation.Eigen();
         const Eigen::Matrix<double, 3, 1> T_Matrix_Inverse_T = estimate.translation.Eigen();
 
@@ -274,22 +288,22 @@ int main(int argc, char** argv)
         T_Matrix_Inverse.block(0, 0, 3, 3) = T_Matrix_Inverse_R;
         T_Matrix_Inverse.block(0, 3, 3, 1) = T_Matrix_Inverse_T;
 
-        //====== Core step ======//
+        //====== 核心步骤：局部 ICP ======//
         
         pcl::PointCloud<pcl::PointXYZ>::Ptr neighbors_trans(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::transformPointCloud(*neighbors_L, *neighbors_trans, T_Matrix_Inverse);
 
-        //Do ICP and get the tiny trans T
-        icp.setInputSource(trans_output_cloud); //201
-        icp.setInputTarget(neighbors_trans);    //202 (201's neighbor's point cloud)
+        // 执行 ICP，得到本帧微小变换 Tiny_T
+        icp.setInputSource(trans_output_cloud); // 当前帧
+        icp.setInputTarget(neighbors_trans);    // 当前帧邻域地图
         icp.align(*ICP_output_cloud);
         const Eigen::Matrix4f Tiny_T = icp.getFinalTransformation();
 
-        //std::cout << "Score: " << icp.getFitnessScore() << std::endl;
+        //std::cout << "匹配得分: " << icp.getFitnessScore() << std::endl;
 
         if (icp.getFitnessScore() > 1)
         {
-            //std::cout<<"not match, skip this"<<std::endl;
+            //std::cout<<"匹配质量差，跳过该帧"<<std::endl;
             init_guess = init_guess_0;
             //continue;
         }
@@ -301,29 +315,32 @@ int main(int argc, char** argv)
             //std::cout << Final_Calib_T.matrix() << std::endl;
             init_guess = Final_Calib_T;
 
-            //===== Out put Euler angle =====//
+            //===== 输出欧拉角 =====//
             gu::Vector3 EulerAngle;
             gu::Rot3 rot_mat(Final_Calib_T(0, 0), Final_Calib_T(0, 1), Final_Calib_T(0, 2),
                              Final_Calib_T(1, 0), Final_Calib_T(1, 1), Final_Calib_T(1, 2),
                              Final_Calib_T(2, 0), Final_Calib_T(2, 1), Final_Calib_T(2, 2));
             EulerAngle = rot_mat.GetEulerZYX();
             const Eigen::Matrix<double, 3, 1> EulerAngle_T = EulerAngle.Eigen();
-            //std::cout<<"EulerAngle:  "<<EulerAngle_T(0,0)<<"  "<<EulerAngle_T(1,0)<<"  "<<EulerAngle_T(2,0)<<"  "<<std::endl;
+            //std::cout<<"欧拉角: "<<EulerAngle_T(0,0)<<" "<<EulerAngle_T(1,0)<<" "<<EulerAngle_T(2,0)<<std::endl;
 
             if (icp.getFitnessScore() < 0.1)
-                fout << frame_count - 100000 << " " << icp.getFitnessScore() << " " << Final_Calib_T(0, 3) << " " << Final_Calib_T(1, 3) << " " << Final_Calib_T(2, 3) << " " << EulerAngle_T(0, 0) << " " << EulerAngle_T(1, 0) << " " << EulerAngle_T(2, 0) << endl; //x,y,z,roll,pitch,yaw
+                fout << frame_count - 100000 << " " << icp.getFitnessScore() << " " << Final_Calib_T(0, 3) << " " << Final_Calib_T(1, 3) << " " << Final_Calib_T(2, 3) << " " << EulerAngle_T(0, 0) << " " << EulerAngle_T(1, 0) << " " << EulerAngle_T(2, 0) << endl; // x, y, z, roll, pitch, yaw
         }
 
         frame_count++;
         cframe_count++;
 
         printProgress((double)cframe_count / (double)framenumbers);
-        viewer_final->updatePointCloud<pcl::PointXYZ>(final_output_cloud, match_color, "match cloud");
-        viewer_final->spinOnce(10);
+        if (enable_viewer)
+        {
+            viewer_final->updatePointCloud<pcl::PointXYZ>(final_output_cloud, match_color, "match cloud");
+            viewer_final->spinOnce(10);
+        }
 
         if (cframe_count == framenumbers)
         {
-            std::cout << "\n Matching complete." << std::endl;
+            std::cout << "\n标定匹配完成。" << std::endl;
             break;
         }
     }

@@ -41,7 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <blam_slam/BlamSlam.h>
 #include "common.h"
 
-// PCL
+// PCL 相关头文件
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/common/transforms.h>
@@ -58,6 +58,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstdlib>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <memory>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 using namespace std;
 
@@ -132,40 +133,51 @@ int main(int argc, char** argv)
     const std::string map_output_path = map_output_dir + "/H_LiDAR_Map.pcd";
     setenv("LIVOX_CALIB_DATA_DIR", data_root.c_str(), 1);
   
-    //================== Step.1 Reading L-LiDAR frames =====================//
+    //================== 步骤1：读取基准雷达帧数据 =====================//
     int framenumbers = countFrames(frames_dir, 100000);
     if (framenumbers <= 0)
     {
-        std::cerr << "No numbered PCD frames found in " << frames_dir << " (expect 100000.pcd...)" << std::endl;
+        std::cerr << "未找到连续编号的 PCD 帧：" << frames_dir << "（应从 100000.pcd 开始）" << std::endl;
         return -1;
     }
     int frame_count = 100000;
     int cframe_count = 0;
-    cout << "Start building local map..." << endl;
-    cout << "Loaded " << framenumbers << " frames from Base-LiDAR" << endl;
+    cout << "开始构建局部地图..." << endl;
+    cout << "已加载基准雷达帧数：" << framenumbers << endl;
 
     ofstream fout(t_matrix_path.c_str());
     if (!fout.is_open())
     {
-        std::cerr << "Cannot open " << t_matrix_path << " for writing" << std::endl;
+        std::cerr << "无法写入轨迹文件：" << t_matrix_path << std::endl;
         return -1;
     }
 
-    pcl::visualization::CloudViewer viewer("Cloud Viewer");
+    const char* viewer_flag = std::getenv("LIVOX_CALIB_ENABLE_VIEWER");
+    const bool enable_viewer = (viewer_flag != nullptr && std::string(viewer_flag) == "1");
+    std::unique_ptr<pcl::visualization::CloudViewer> viewer;
+    if (enable_viewer)
+    {
+        viewer.reset(new pcl::visualization::CloudViewer("点云可视化窗口"));
+    }
     
     LivoxSLAM.Initialize();
 
-   //================== Step.2 building submap =====================//
+    //================== 步骤2：构建子地图 =====================//
 
-    while (!viewer.wasStopped())  
+    while (true)
     {
+        if (enable_viewer && viewer->wasStopped())
+        {
+            break;
+        }
+
         while (frame_count < framenumbers + 100000)
         
         {
             pcl::PointCloud<pcl::PointXYZ>::Ptr frames(new pcl::PointCloud<pcl::PointXYZ>);
             if (pcl::io::loadPCDFile<pcl::PointXYZ>(frames_dir + "/" + itos(frame_count) + ".pcd", *frames) == -1)
             {
-                PCL_ERROR("Couldn't read H_LiDAR_Map \n");
+                PCL_ERROR("读取 PCD 帧失败\n");
                 return (-1);
             }
             
@@ -183,7 +195,10 @@ int main(int argc, char** argv)
             tf.block(0, 3, 3, 1) = T;
             fout << tf.matrix() << endl;
 
-            viewer.showCloud(LivoxSLAM.mapper_.map_data_);
+            if (enable_viewer)
+            {
+                viewer->showCloud(LivoxSLAM.mapper_.map_data_);
+            }
             
             frame_count++;
             cframe_count++;
@@ -191,11 +206,11 @@ int main(int argc, char** argv)
             printProgress ((double)cframe_count/(double)framenumbers);
         }
 
-        std::cout << "\nSaving submap..." << std::endl;
+        std::cout << "\n正在保存子地图..." << std::endl;
         mkdir(map_output_dir.c_str(), 0755);
         pcl::PCDWriter writer;
         writer.write(map_output_path, *LivoxSLAM.mapper_.map_data_);
-        std::cout << "Mapping done！" << std::endl;
+        std::cout << "建图完成！" << std::endl;
         fout.close();
         break;
        

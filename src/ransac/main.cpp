@@ -37,7 +37,7 @@ int main(int argc, char** argv)
 
         const std::string calib_data_path = data_root + "/calib_data.txt";
 
-        //========Read calibration data========//
+        //========读取标定数据========//
 
         double id, score, x = 0.0, y = 0.0, z = 0.0, roll = 0.0, yaw = 0.0, pitch = 0.0;
         double x_0 = 0.0, y_0 = 0.0, z_0 = 0.0, roll_0 = 0.0, yaw_0 = 0.0, pitch_0 = 0.0;
@@ -45,7 +45,7 @@ int main(int argc, char** argv)
         ifstream calib_FileA(calib_data_path.c_str());
         if (!calib_FileA.is_open())
         {
-                cerr << "Cannot open " << calib_data_path << endl;
+                cerr << "无法打开文件：" << calib_data_path << endl;
                 return -1;
         }
 
@@ -58,16 +58,16 @@ int main(int argc, char** argv)
 
         if (filecount <= 0)
         {
-                cerr << "No valid calibration records in " << calib_data_path << endl;
+                cerr << "未读取到有效标定记录：" << calib_data_path << endl;
                 return -1;
         }
 
-        cout << "Read " << filecount << " data" << endl;
+        cout << "读取数据条数：" << filecount << endl;
 
         ifstream calib_File(calib_data_path.c_str());
         if (!calib_File.is_open())
         {
-                cerr << "Cannot reopen " << calib_data_path << endl;
+                cerr << "无法重新打开文件：" << calib_data_path << endl;
                 return -1;
         }
         int count = 0;
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
         pitch = pitch_0;
         yaw = yaw_0;
 
-     /*   float lines[4] = {0.0}; //line parameters
+        /*   float lines[4] = {0.0}; // 直线参数
 
         int numForEstimate = 5;
         float successProbability = 0.9999f;
@@ -134,47 +134,47 @@ int main(int argc, char** argv)
         Ransac(points_x, filecount, lines, numForEstimate, successProbability, maxOutliersPercentage);
         a = lines[1] / lines[0];
         b = lines[3] - a * lines[2];
-        printf("x ransac fit(including outliers): a: %f  x: %f\n", a, b);
+        printf("x 方向 ransac 拟合（含离群点）：a: %f  x: %f\n", a, b);
         x = b;
 
         Ransac(points_y, filecount, lines, numForEstimate, successProbability, maxOutliersPercentage);
         a = lines[1] / lines[0];
         b = lines[3] - a * lines[2];
-        printf("y ransac fit(including outliers): a: %f  y: %f\n", a, b);
+        printf("y 方向 ransac 拟合（含离群点）：a: %f  y: %f\n", a, b);
         y = b;
 
         Ransac(points_z, filecount, lines, numForEstimate, successProbability, maxOutliersPercentage);
         a = lines[1] / lines[0];
         b = lines[3] - a * lines[2];
-        printf("z ransac fit(including outliers): a: %f  z: %f\n", a, b);
+        printf("z 方向 ransac 拟合（含离群点）：a: %f  z: %f\n", a, b);
         z = b;
 
         Ransac(points_roll, filecount, lines, numForEstimate, successProbability, maxOutliersPercentage);
         a = lines[1] / lines[0];
         b = lines[3] - a * lines[2];
-        printf("roll ransac fit(including outliers): a: %f  roll: %f\n", a, b);
+        printf("roll 方向 ransac 拟合（含离群点）：a: %f  roll: %f\n", a, b);
         roll = b;
 
         Ransac(points_pitch, filecount, lines, numForEstimate, successProbability, maxOutliersPercentage);
         a = lines[1] / lines[0];
         b = lines[3] - a * lines[2];
-        printf("pitch ransac fit(including outliers): a: %f  pitch: %f\n", a, b);
+        printf("pitch 方向 ransac 拟合（含离群点）：a: %f  pitch: %f\n", a, b);
         pitch = b;
 
         Ransac(points_yaw, filecount, lines, numForEstimate, successProbability, maxOutliersPercentage);
         a = lines[1] / lines[0];
         b = lines[3] - a * lines[2];
-        printf("yaw ransac fit(including outliers): a: %f  yaw: %f\n", a, b);
+        printf("yaw 方向 ransac 拟合（含离群点）：a: %f  yaw: %f\n", a, b);
         yaw = b;
 */
         calib_File.close();
 
         cout << endl;
-        cout << "RANSAC Result (x,y,z,roll,pitch,yaw): " << x << ", " << y << ", " << z << ", " << roll << ", " << pitch << ", " << yaw << endl;
+        cout << "RANSAC 结果（x,y,z,roll,pitch,yaw）：" << x << ", " << y << ", " << z << ", " << roll << ", " << pitch << ", " << yaw << endl;
 
         Eigen::Matrix<double, 3, 1> T;
 
-        //EulerAngles to RotationMatrix
+        // 欧拉角转旋转矩阵
         ::Eigen::Vector3d ea0(yaw, pitch, roll);
         ::Eigen::Matrix3d R;
         R = ::Eigen::AngleAxisd(ea0[0], ::Eigen::Vector3d::UnitZ()) * ::Eigen::AngleAxisd(ea0[1], ::Eigen::Vector3d::UnitY()) * ::Eigen::AngleAxisd(ea0[2], ::Eigen::Vector3d::UnitX());
@@ -187,7 +187,7 @@ int main(int argc, char** argv)
         tf.block(0, 3, 3, 1) = T;
 
         cout << "----------------------------------" << endl;
-        cout << "Result Matrix:" << endl;
+        cout << "最终矩阵：" << endl;
         cout << tf << endl;
 
         return 0;

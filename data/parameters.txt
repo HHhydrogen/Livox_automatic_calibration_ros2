@@ -3,88 +3,79 @@ fixed=world
 base=base
 odometry=odometry
 
-# Apply a voxel grid filter on incoming point clouds.
+# 对输入点云启用体素滤波。
 grid_filter=1
 
-# Resolution of voxel grid filter.
+# 体素滤波分辨率。
 grid_res=0.2
 
-# Apply a random downsample filter on incoming point clouds.
+# 对输入点云启用随机降采样。
 random_filter=0
 
-# Percentage of points to discard. Must be between 0.0 and 1.0.
+# 丢弃点比例，范围为 0.0 到 1.0。
 decimate_percentage=0.60 #0.9
 
-# Apply a statistical outlier filter on incoming point clouds.
+# 对输入点云启用统计离群点滤波。
 outlier_filter=1
 
-# Standard deviation threshold in distance to neighbors for outlier removal.
+# 邻域距离标准差阈值（用于离群点剔除）。
 outlier_std=1.0
 
-# Number of nearest neighbors for outlier removal filter.
+# 离群点剔除时使用的近邻点数量。
 outlier_knn=5 #10
 
-# Apply a radius filter on incoming point clouds.
+# 对输入点云启用半径滤波。
 radius_filter=0
 
-# Size of the radius outlier filter.
+# 半径滤波半径。
 radius=0.15
 
-# If this number of neighbors are not found within a radius of a point, remove
-# the point.
+# 若某点在半径范围内近邻数小于该值，则剔除该点。
 radius_knn=3
 
  
 octree_resolution=0.05 # 0.05
  
-# Stop ICP if the transformation from the last iteration was this small.
+# 当相邻迭代变换小于该阈值时停止 ICP。
 tf_epsilon=0.0000000001
 
-# During ICP, two points won't be considered a correspondence if they are at
-# least this far from one another.
+# ICP 对应点最大距离阈值，超过该距离不参与匹配。
 corr_dist=2.0
 
-# Iterate ICP this many times.
+# ICP 最大迭代次数。
 iterations=10
 
-# Maximum acceptable incremental rotation and translation.
+# 增量旋转与平移的容差上限。
 transform_thresholding=0
 max_translation=0.09
 max_rotation=0.1
   
   
-  # Toggle loop closures on or off. Setting this to off will increase run-time
-# speed by a small fraction.
+# 是否启用回环检测。关闭后运行速度会略有提升。
 check_for_loop_closures=1
 
-# Default parameters for the ISAM2 data structure.
+# ISAM2 默认参数。
 relinearize_skip=1
 relinearize_threshold=0.01
 
-# Amount of translational distance the sensor must travel before adding a new
-# pose to the pose graph. This helps keep the graph sparse so that loop closures
-# are fast.
+# 传感器累计平移达到该阈值后才向位姿图加入新节点。
+# 该参数可控制图稀疏度，提升回环速度。
 translation_threshold=0.5
 
-# When searching through old poses for loop closures, only consider old poses
-# that are within this distance of the current pose.
+# 回环搜索时，只考虑与当前位姿距离小于该阈值的历史位姿。
 proximity_threshold=1.5
 
-# To compute a loop closure we perform ICP between the current scan and laser
-# scans captured from nearby poses. In order to be considered a loop closure,
-# the ICP "fitness score" must be less than this number.
+# 回环判定通过 ICP 得分进行，得分小于该阈值才认为是有效回环。
 max_tolerable_fitness=0.15
 
-# Don't attempt loop closures with poses in the graph that were collected within
-# the last 'skip_recent_poses' poses.
+# 最近 skip_recent_poses 个位姿不参与回环匹配。
 skip_recent_poses=40
 
-# If a loop has recently been closed, don't close a new one for at least this
-# many poses (i.e. the sensor would have to move translation_threshold *
-# poses_before_reclosing meters in order to close a new loop).
+# 若刚发生回环，则至少等待 poses_before_reclosing 个位姿后再允许下一次回环。
+# 等效最小位移约为 translation_threshold * poses_before_reclosing。
 poses_before_reclosing=40
 
-#<!-- Initial pose -->
+# 初始位姿
 position_x=0.0
 position_y=0.0
 position_z=0.0

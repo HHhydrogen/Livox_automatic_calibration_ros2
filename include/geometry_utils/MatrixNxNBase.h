@@ -27,12 +27,12 @@ struct MatrixNxNBase : MatrixNxMBase<T, N, N> {
   }
 
   virtual inline T Det() const {
-    std::cerr << "MatrixNxMBase::det not implemented" << std::endl;
+    std::cerr << "MatrixNxMBase::det 尚未实现" << std::endl;
     return T();
   }
 
   virtual inline MatrixNxNBase<T, N> Inv() const {
-    std::cerr << "MatrixNxMBase::inv not implemented" << std::endl;
+    std::cerr << "MatrixNxMBase::inv 尚未实现" << std::endl;
     return MatrixNxNBase<T, N>();
   }
 
